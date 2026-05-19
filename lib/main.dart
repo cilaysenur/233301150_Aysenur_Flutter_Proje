@@ -1,8 +1,8 @@
-import 'dart:ui';
+import 'dart:ui'; // BackdropFilter için gerekli
 import 'package:flutter/material.dart';
-import 'kayit_ol.dart';
-import 'ilanlar_sayfasi.dart'; // Giriş yapınca ilanlara gitmesi için ekledik
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'ilanlar_sayfasi.dart'; 
+import 'kayit_ol.dart';        
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +27,19 @@ class IkinciElApp extends StatelessWidget {
         primaryColor: const Color(0xFF1E3A8A),
         fontFamily: 'Roboto',
       ),
-      home: const LoginScreen(), 
+      home: StreamBuilder<AuthState>(
+        stream: Supabase.instance.client.auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          final session = snapshot.data?.session;
+          if (session != null) {
+            return const IlanlarSayfasi();
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
@@ -71,15 +83,13 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (e) {
-      debugPrint("Giriş işlemi yönlendirildi (UX Fallback): $e");
-    } finally {
       if (mounted) {
-        setState(() { _yukleniyor = false; });
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const IlanlarSayfasi()),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Hata: $e'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() { _yukleniyor = false; });
     }
   }
 

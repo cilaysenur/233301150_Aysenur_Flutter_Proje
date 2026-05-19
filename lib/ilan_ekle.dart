@@ -66,6 +66,15 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
         'resim': resimUrl, 
       });
 
+      try {
+        await Supabase.instance.client.from('islem_loglari').insert({
+          'islem_turu': 'Yeni İlan Ekleme',
+          'kullanici_email': Supabase.instance.client.auth.currentUser?.email ?? 'Bilinmeyen Kullanıcı',
+        });
+      } catch (logHatasi) {
+        debugPrint("Log kaydedilemedi: $logHatasi");
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İlan Başarıyla Eklendi!"), backgroundColor: Colors.green));
         Navigator.pop(context, true); 
@@ -95,7 +104,6 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
                 const Text("Ürün Görseli", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 10),
                 
-                // Resim Seçme Alanı Tıklanabilir Yapıldı
                 InkWell(
                   onTap: _resimSec,
                   child: Container(
