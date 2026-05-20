@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'ilan_ekle.dart';
 import 'favoriler_sayfasi.dart';
 import 'ilan_detay.dart';
+import 'ilanlarim_sayfasi.dart';
+import 'profil_sayfasi.dart';
 
 class IlanlarSayfasi extends StatefulWidget {
   const IlanlarSayfasi({super.key});
@@ -15,14 +17,37 @@ class IlanlarSayfasi extends StatefulWidget {
 class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
   List<Map<String, dynamic>> _canliIlanlar = [];
   bool _yukleniyor = true;
+  bool _yeniBildirimVar = false; 
   
-  final List<String> _kategoriler = ["Tümü", "Elektronik", "Vasıta", "Moda", "Kitap", "Mobilya", "Hobi"];
+  final List<String> _kategoriler = ["Tümü", "Elektronik", "Vasıta", "Moda", "Kitap", "Mobilya", "Hobi", "Diğer"];
   String _seciliKategori = "Tümü";
 
   @override
   void initState() {
     super.initState();
     _verileriGetir();
+    _bildirimKontrol(); 
+  }
+
+  Future<void> _bildirimKontrol() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final response = await Supabase.instance.client
+          .from('teklifler')
+          .select('id')
+          .eq('ilan_sahibi_email', user.email!)
+          .eq('durum', 'Bekliyor'); 
+
+      if (mounted) {
+        setState(() {
+          _yeniBildirimVar = response.isNotEmpty; 
+        });
+      }
+    } catch (e) {
+      debugPrint("Bildirim kontrol hatası: $e");
+    }
   }
 
   Future<void> _verileriGetir() async {
@@ -72,21 +97,50 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
             const SizedBox(width: 40),
             _navbarItem("Ana Sayfa", active: true, onTap: () {}),
             _navbarItem("İlanlarım", onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İlanlarım sayfası Adım 2'de eklenecek!")));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanlarimSayfasi()));
             }),
           ],
         ),
         actions: [
-          _navbarAction(Icons.add_circle_outline, "İlan Ekle", () async {
+          _navbarAction(Icons.add_circle_outline, "İlan Ver", () async {
             final sonuc = await Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanEkleSayfasi()));
-            if (sonuc == true) _verileriGetir();
+            if (sonuc == true) _verileriGetir(); 
           }),
-         _navbarAction(Icons.favorite_border, "Favoriler", () {
+          
+          _navbarAction(Icons.favorite_border, "Favoriler", () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const FavorilerSayfasi()));
-         }),
-         _navbarAction(Icons.person_outline, "Profilim", () {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil sayfası yakında eklenecek!")));
-         }),
+          }),
+          
+          InkWell(
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfilSayfasi()));
+              _bildirimKontrol(); 
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Badge(
+                    isLabelVisible: _yeniBildirimVar, 
+                    backgroundColor: Colors.red,
+                    smallSize: 10,
+                    child: const Icon(Icons.person_outline, size: 20, color: Colors.black87),
+                  ),
+                  const SizedBox(width: 5),
+                  const Text("Profilim", style: const TextStyle(color: Colors.black87, fontSize: 13)),
+                ],
+              ),
+            ),
+          ),
+          
+          _navbarAction(Icons.logout, "Çıkış Yap", () async {
+            await Supabase.instance.client.auth.signOut(); 
+            if (context.mounted) {
+              Navigator.of(context).popUntil((route) => route.isFirst); 
+            }
+          }),
+          
           const SizedBox(width: 20),
         ],
       ),
@@ -130,7 +184,10 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(_seciliKategori == "Tümü" ? "Tüm İlanlar" : "$_seciliKategori İlanları", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                      IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF1E3A8A)), onPressed: _verileriGetir)
+                      IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF1E3A8A)), onPressed: () {
+                        _verileriGetir();
+                        _bildirimKontrol(); 
+                      })
                     ],
                   ),
                   const SizedBox(height: 20),

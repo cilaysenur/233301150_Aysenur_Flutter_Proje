@@ -12,10 +12,12 @@ class IlanEkleSayfasi extends StatefulWidget {
 
 class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
   final _baslikController = TextEditingController();
-  final _kategoriController = TextEditingController();
   final _sehirController = TextEditingController();
   final _fiyatController = TextEditingController();
   final _aciklamaController = TextEditingController();
+  
+  String? _seciliKategori;
+  final List<String> _kategoriler = ["Elektronik", "Vasıta", "Moda", "Kitap", "Mobilya", "Hobi", "Diğer"];
   
   bool _yukleniyor = false;
   
@@ -36,15 +38,14 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
   }
 
   Future<void> _ilaniKaydet() async {
-    if (_baslikController.text.isEmpty || _fiyatController.text.isEmpty || _secilenResimBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen tüm alanları doldurun ve resim seçin!")));
+    if (_baslikController.text.isEmpty || _fiyatController.text.isEmpty || _secilenResimBytes == null || _seciliKategori == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen tüm alanları doldurun, kategori ve resim seçin!")));
       return;
     }
 
     setState(() { _yukleniyor = true; });
 
     try {
-      
       final guvenliDosyaAdi = 'ilan_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final resimYolu = 'ilanlar/$guvenliDosyaAdi';
       
@@ -56,20 +57,25 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
           .from('ilan_resimleri')
           .getPublicUrl(resimYolu);
 
+      final user = Supabase.instance.client.auth.currentUser;
+      final userEmail = user?.email ?? 'Bilinmeyen Kullanıcı';
+      final saticiAdi = userEmail != 'Bilinmeyen Kullanıcı' ? userEmail.split('@')[0] : 'Anonim';
+
       await Supabase.instance.client.from('ilanlar').insert({
         'baslik': _baslikController.text.trim(),
-        'kategori': _kategoriController.text.trim(),
+        'kategori': _seciliKategori, 
         'sehir': _sehirController.text.trim(),
         'fiyat': _fiyatController.text.trim(),
         'aciklama': _aciklamaController.text.trim(),
-        'satici': 'Ahmet Yılmaz', 
+        'satici': saticiAdi,
+        'email': userEmail,  
         'resim': resimUrl, 
       });
 
       try {
         await Supabase.instance.client.from('islem_loglari').insert({
           'islem_turu': 'Yeni İlan Ekleme',
-          'kullanici_email': Supabase.instance.client.auth.currentUser?.email ?? 'Bilinmeyen Kullanıcı',
+          'kullanici_email': userEmail,
         });
       } catch (logHatasi) {
         debugPrint("Log kaydedilemedi: $logHatasi");
@@ -92,7 +98,7 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text("Yeni İlan Ekle"), backgroundColor: Colors.white, foregroundColor: const Color(0xFF1E3A8A), elevation: 0),
+      appBar: AppBar(title: const Text("Yeni İlan Ver"), backgroundColor: Colors.white, foregroundColor: const Color(0xFF1E3A8A), elevation: 0),
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800), 
@@ -133,7 +139,34 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
                 _buildInputLabel("İlan Başlığı"), _buildTextField("Örn: iPhone 14", controller: _baslikController),
                 Row(
                   children: [
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInputLabel("Kategori"), _buildTextField("Kategori Seçiniz", controller: _kategoriController)])),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, 
+                        children: [
+                          _buildInputLabel("Kategori"), 
+                          DropdownButtonFormField<String>(
+                            value: _seciliKategori,
+                            hint: const Text("Kategori Seçiniz"),
+                            decoration: InputDecoration(
+                              filled: true, 
+                              fillColor: const Color(0xFFF8FAFC), 
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)
+                            ),
+                            items: _kategoriler.map((String kategori) {
+                              return DropdownMenuItem<String>(
+                                value: kategori,
+                                child: Text(kategori),
+                              );
+                            }).toList(),
+                            onChanged: (String? yeniDeger) {
+                              setState(() {
+                                _seciliKategori = yeniDeger;
+                              });
+                            },
+                          )
+                        ]
+                      )
+                    ),
                     const SizedBox(width: 20),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInputLabel("Şehir"), _buildTextField("Şehir Seçiniz", controller: _sehirController)])),
                   ],
