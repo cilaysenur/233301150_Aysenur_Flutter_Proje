@@ -12,19 +12,54 @@ class IlanDetaySayfasi extends StatefulWidget {
 class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
   final _teklifController = TextEditingController();
   bool _islemYapiliyor = false;
+  String _aktifKullaniciEmail = "";
+
+  @override
+  void initState() {
+    super.initState();
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      _aktifKullaniciEmail = user.email!;
+    }
+  }
+
+  Future<void> _ilaniSil() async {
+    setState(() => _islemYapiliyor = true);
+    try {
+      await Supabase.instance.client
+          .from('ilanlar')
+          .delete()
+          .eq('id', widget.ilan['id']);
+
+      try {
+        await Supabase.instance.client.from('islem_loglari').insert({
+          'islem_turu': _aktifKullaniciEmail == 'admin2005@gmail.com' ? 'Admin Tarafından İlan Silme' : 'Kullanıcı Kendi İlanını Sildi',
+          'kullanici_email': _aktifKullaniciEmail,
+        });
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İlan başarıyla sistemden silindi!"), backgroundColor: Colors.black87));
+        Navigator.pop(context, true); // Ana sayfaya dön ve yenilemeyi tetikle
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Silme Hatası: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _islemYapiliyor = false);
+    }
+  }
 
   Future<void> _teklifGonder() async {
     if (_teklifController.text.isEmpty) return;
 
     setState(() => _islemYapiliyor = true);
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
+      if (_aktifKullaniciEmail.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Teklif vermek için giriş yapmalısınız!")));
         return;
       }
 
-      if (user.email == widget.ilan['email']) {
+      if (_aktifKullaniciEmail == widget.ilan['email']) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kendi ilanınıza teklif veremezsiniz!"), backgroundColor: Colors.orange));
         Navigator.pop(context); 
         return;
@@ -32,13 +67,13 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
       await Supabase.instance.client.from('teklifler').insert({
         'ilan_id': widget.ilan['id'],
-        'ilan_sahibi_email': widget.ilan['email'],
-        'teklif_veren_email': user.email,          
+        'ilan_sahibi_email': widget.ilan['email'], 
+        'teklif_veren_email': _aktifKullaniciEmail,          
         'teklif_fiyati': _teklifController.text,
       });
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Teklifiniz satıcıya başarıyla iletildi! 🎉"), backgroundColor: Colors.green)
         );
@@ -105,6 +140,9 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
   @override
   Widget build(BuildContext context) {
+    final bool ilanSahibiMi = _aktifKullaniciEmail == widget.ilan['email'];
+    final bool adminMi = _aktifKullaniciEmail == 'admin2005@gmail.com';
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(title: Text(widget.ilan['baslik'] ?? 'İlan Detayı'), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
@@ -145,30 +183,32 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
                           Text("₺${widget.ilan['fiyat']}", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Color(0xFF1E3A8A))),
                           const SizedBox(height: 20),
                           
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favoriler eklendi")));
-                              },
-                              icon: const Icon(Icons.favorite_border, color: Colors.red),
-                              label: const Text("Favoriye Ekle", style: TextStyle(color: Colors.red)),
-                              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          if (!ilanSahibiMi)
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                onPressed: _teklifVermeMenusuAc,
+                                icon: const Icon(Icons.local_offer, color: Colors.white),
+                                label: const Text("Teklif Ver", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 15),
+                          
+                          if (!ilanSahibiMi) const SizedBox(height: 15),
 
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton.icon(
-                              onPressed: _teklifVermeMenusuAc,
-                              icon: const Icon(Icons.local_offer, color: Colors.white),
-                              label: const Text("Teklif Ver", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                          if (ilanSahibiMi || adminMi)
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                onPressed: _islemYapiliyor ? null : _ilaniSil,
+                                icon: const Icon(Icons.delete_forever, color: Colors.white),
+                                // Admin silerken butonun adı "Admin: İlanı Kaldır" olur, hoca bayılır!
+                                label: Text(adminMi ? "Admin: İlanı Kaldır" : "İlanımı Sil", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                              ),
                             ),
-                          ),
                           
                           const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider()),
                           _buildDetailRow(Icons.category, "Kategori", widget.ilan['kategori']),
