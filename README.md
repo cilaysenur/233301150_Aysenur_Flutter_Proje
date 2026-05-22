@@ -1,17 +1,24 @@
-# flutter_application_1
+# test hesabı bilgileri
+admin2005@gmail.com  şifre=6789021
+ahmetyilmaz@gmail.com  şifre=12345678
+aysenurcil@gmail.com   şifre=1425367
+dogan@gmail.com   şifre= 234567
 
-A new Flutter project.
 
-## Getting Started
+# uygulama adı
+ikinci el ilan platformu
 
-This project is a starting point for a Flutter application.
 
-A few resources to get you started if this is your first Flutter project:
+# öğrenci adı numarası
+Ayşe Nur Çil  233301150
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+# kullanılan paketler
+import 'package:flutter/material.dart';: Flutter'ın temel arayüz (UI) bileşenlerini ve materyal tasarım öğelerini sağlayan ana paket.
+
+import 'package:supabase_flutter/supabase_flutter.dart';: Uygulamanın veritabanı, kimlik doğrulama ve gerçek zamanlı özellikler için kullandığı Supabase paketi.
+
+import 'dart:ui';: Flutter'ın düşük seviyeli grafik, metin ve arayüz çizim özelliklerine erişmek için kullanılan standart paket.
+
+# drive linki
+https://drive.google.com/file/d/1gqggSfMvEnjg5njnjBaOqRuxJywlLiov/view?usp=sharing
