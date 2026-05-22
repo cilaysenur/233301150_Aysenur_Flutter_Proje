@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'ilan_duzenle.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'ilan_ekle.dart';
@@ -18,6 +19,9 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
   List<Map<String, dynamic>> _canliIlanlar = [];
   bool _yukleniyor = true;
   bool _yeniBildirimVar = false; 
+  List<int> _favoriIlanIdleri = [];
+  
+  final _aramaController = TextEditingController();
   
   final List<String> _kategoriler = ["Tümü", "Elektronik", "Vasıta", "Moda", "Kitap", "Mobilya", "Hobi", "Diğer"];
   String _seciliKategori = "Tümü";
@@ -50,7 +54,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
     }
   }
 
-  Future<void> _verileriGetir() async {
+  Future<void> _verileriGetir({String? aramaSorgusu}) async {
     setState(() { _yukleniyor = true; });
     try {
       var query = Supabase.instance.client.from('ilanlar').select();
@@ -59,16 +63,164 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
         query = query.eq('kategori', _seciliKategori);
       }
       
-      final response = await query.order('created_at', ascending: false);
+      if (aramaSorgusu != null && aramaSorgusu.trim().isNotEmpty) {
+        query = query.ilike('baslik', '%${aramaSorgusu.trim()}%');
+      }
       
-      setState(() {
-        _canliIlanlar = List<Map<String, dynamic>>.from(response);
-      });
+      final response = await query.order('created_at', ascending: false);
+
+      final user = Supabase.instance.client.auth.currentUser;
+      List<int> favorilerim = [];
+      if (user != null) {
+        final favData = await Supabase.instance.client.from('favoriler').select('ilan_id').eq('user_email', user.email!);
+        for (var f in favData) {
+          favorilerim.add(f['ilan_id'] as int);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _canliIlanlar = List<Map<String, dynamic>>.from(response);
+          _favoriIlanIdleri = favorilerim;
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Veri çekme hatası: $e"), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Veri çekme hatası: $e"), backgroundColor: Colors.red));
     } finally {
-      setState(() { _yukleniyor = false; });
+      if (mounted) setState(() { _yukleniyor = false; });
     }
+  }
+
+  Future<void> _favoriyeEkleCikar(int ilanId) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Önce giriş yapmalısınız!")));
+      return;
+    }
+
+    bool suAnFavoriMi = _favoriIlanIdleri.contains(ilanId);
+    
+    setState(() {
+      if (suAnFavoriMi) {
+        _favoriIlanIdleri.remove(ilanId);
+      } else {
+        _favoriIlanIdleri.add(ilanId);
+      }
+    });
+
+    try {
+      if (suAnFavoriMi) {
+        await Supabase.instance.client.from('favoriler').delete().eq('user_email', user.email!).eq('ilan_id', ilanId);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favorilerden çıkarıldı."), backgroundColor: Colors.black87));
+      } else {
+        await Supabase.instance.client.from('favoriler').insert({'user_email': user.email!, 'ilan_id': ilanId});
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favorilere eklendi! ❤️"), backgroundColor: Colors.red));
+      }
+    } catch (e) {
+      setState(() {
+        if (suAnFavoriMi) {
+          _favoriIlanIdleri.add(ilanId);
+        } else {
+          _favoriIlanIdleri.remove(ilanId);
+        }
+      });
+    }
+  }
+
+  // YENİ: Teklif Gönderme İşlemi (Ayrı Fonksiyon)
+  Future<void> _teklifGonder(Map<String, dynamic> ilan, String fiyat) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    
+    try {
+      await Supabase.instance.client.from('teklifler').insert({
+        'ilan_id': ilan['id'],
+        'ilan_sahibi_email': ilan['email'], 
+        'teklif_veren_email': user.email,          
+        'teklif_fiyati': fiyat,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Teklif başarıyla iletildi! 🎉"), backgroundColor: Colors.green));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
+    }
+  }
+
+  // YENİ: Zarif Pop-up Menu (Tooltip Benzeri)
+  void _teklifMenusuGoster(BuildContext context, Map<String, dynamic> ilan, GlobalKey key) {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Teklif vermek için giriş yapmalısınız!")));
+      return;
+    }
+    if (user.email == ilan['email']) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kendi ilanınıza teklif veremezsiniz!"), backgroundColor: Colors.orange));
+      return;
+    }
+
+    final RenderBox renderBox = key.currentContext!.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+    final position = renderBox.localToGlobal(Offset.zero);
+
+    final teklifController = TextEditingController();
+
+    showMenu(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx, 
+        position.dy - 160, 
+        position.dx + size.width, 
+        position.dy
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      items: [
+        PopupMenuItem(
+          enabled: false, 
+          child: SizedBox(
+            width: 200,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Hızlı Teklif Ver", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87)),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: teklifController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: "Teklifiniz (₺)",
+                      hintStyle: const TextStyle(fontSize: 12),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                      filled: true,
+                      fillColor: Colors.grey.shade100,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 35,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                    onPressed: () {
+                      if (teklifController.text.isNotEmpty) {
+                        Navigator.pop(context);
+                        _teklifGonder(ilan, teklifController.text);
+                      }
+                    },
+                    child: const Text("Gönder", style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   String _tarihFormatla(String? hamTarih) {
@@ -108,7 +260,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
           }),
           
           _navbarAction(Icons.favorite_border, "Favoriler", () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const FavorilerSayfasi()));
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const FavorilerSayfasi())).then((_) => _verileriGetir());
           }),
           
           InkWell(
@@ -128,7 +280,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                     child: const Icon(Icons.person_outline, size: 20, color: Colors.black87),
                   ),
                   const SizedBox(width: 5),
-                  const Text("Profilim", style: const TextStyle(color: Colors.black87, fontSize: 13)),
+                  const Text("Profilim", style: TextStyle(color: Colors.black87, fontSize: 13)),
                 ],
               ),
             ),
@@ -172,7 +324,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: seciliMi ? const Color(0xFF1E3A8A) : Colors.grey.shade300)),
                             onSelected: (selected) {
                               setState(() => _seciliKategori = kat);
-                              _verileriGetir(); 
+                              _verileriGetir(aramaSorgusu: _aramaController.text); 
                             },
                           ),
                         );
@@ -185,7 +337,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                     children: [
                       Text(_seciliKategori == "Tümü" ? "Tüm İlanlar" : "$_seciliKategori İlanları", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                       IconButton(icon: const Icon(Icons.refresh, color: Color(0xFF1E3A8A)), onPressed: () {
-                        _verileriGetir();
+                        _verileriGetir(aramaSorgusu: _aramaController.text);
                         _bildirimKontrol(); 
                       })
                     ],
@@ -194,7 +346,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                   _yukleniyor
                       ? const Center(child: Padding(padding: EdgeInsets.all(50.0), child: CircularProgressIndicator()))
                       : _canliIlanlar.isEmpty
-                          ? Center(child: Padding(padding: const EdgeInsets.all(50.0), child: Text("Bu kategoride henüz hiç ilan eklenmemiş.", style: TextStyle(fontSize: 16, color: Colors.grey.shade600))))
+                          ? Center(child: Padding(padding: const EdgeInsets.all(50.0), child: Text("Bu kategoride veya aramada ilan bulunmuyor.", style: TextStyle(fontSize: 16, color: Colors.grey.shade600))))
                           : GridView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
@@ -253,8 +405,23 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
                     children: [
                       const Icon(Icons.search, color: Color(0xFF1E3A8A)),
                       const SizedBox(width: 10),
-                      const Expanded(child: TextField(decoration: InputDecoration(hintText: "İlan ara...", border: InputBorder.none))),
-                      ElevatedButton(onPressed: () {}, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), child: const Text("İlanları Keşfet", style: TextStyle(color: Colors.white)))
+                      Expanded(child: TextField(
+                        controller: _aramaController,
+                        onChanged: (value) {
+                           _verileriGetir(aramaSorgusu: value); 
+                        },
+                        onSubmitted: (value) {
+                           _verileriGetir(aramaSorgusu: value); 
+                        },
+                        decoration: const InputDecoration(hintText: "İlan ara...", border: InputBorder.none)
+                      )),
+                      ElevatedButton(
+                        onPressed: () {
+                          _verileriGetir(aramaSorgusu: _aramaController.text);
+                        }, 
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), 
+                        child: const Text("İlanları Keşfet", style: TextStyle(color: Colors.white))
+                      )
                     ],
                   ),
                 ),
@@ -268,9 +435,12 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
   }
 
   Widget _buildModernCard(Map<String, dynamic> ilan) {
+    bool favoriMi = _favoriIlanIdleri.contains(ilan['id']);
+    final GlobalKey teklifButonKey = GlobalKey(); 
+
     return InkWell(
       onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => IlanDetaySayfasi(ilan: ilan)));
+        Navigator.push(context, MaterialPageRoute(builder: (context) => IlanDetaySayfasi(ilan: ilan))).then((_) => _verileriGetir());
       },
       borderRadius: BorderRadius.circular(20),
       child: Container(
@@ -279,9 +449,55 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: Image.network(ilan["resim"] ?? "https://via.placeholder.com/500", fit: BoxFit.cover, width: double.infinity, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 50, color: Colors.grey))),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                    child: Image.network(ilan["resim"] ?? "https://via.placeholder.com/500", fit: BoxFit.cover, width: double.infinity, height: double.infinity, errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 50, color: Colors.grey))),
+                  ),
+                  
+                  Positioned(
+                    bottom: 10,
+                    right: 10,
+                    child: Row(
+                      children: [
+                        ElevatedButton(
+                          key: teklifButonKey,
+                          onPressed: () => _teklifMenusuGoster(context, ilan, teklifButonKey), 
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1E3A8A), 
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            minimumSize: const Size(0, 36),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                          ),
+                          child: const Text("Teklif Ver", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))
+                        ),
+                        
+                        const SizedBox(width: 8),
+                        
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: favoriMi ? Colors.red.withOpacity(0.1) : Colors.white.withOpacity(0.9),
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5)]
+                          ),
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: Icon(
+                              favoriMi ? Icons.favorite : Icons.favorite_border, 
+                              color: favoriMi ? Colors.red : Colors.grey.shade600, 
+                              size: 20
+                            ),
+                            onPressed: () => _favoriyeEkleCikar(ilan['id']),
+                            tooltip: "Favorilere Ekle/Çıkar",
+                          ),
+                        )
+                      ],
+                    ),
+                  )
+                ],
               ),
             ),
             Padding(

@@ -12,17 +12,19 @@ class IlanEkleSayfasi extends StatefulWidget {
 
 class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
   final _baslikController = TextEditingController();
-  final _sehirController = TextEditingController();
   final _fiyatController = TextEditingController();
   final _aciklamaController = TextEditingController();
   
   String? _seciliKategori;
-  final List<String> _kategoriler = ["Elektronik", "Vasıta", "Moda", "Kitap", "Mobilya", "Hobi", "Diğer"];
+  final List<String> _kategoriler = ["Elektronik", "Vasıta", "Emlak", "Mobilya", "Giyim", "Spor Malzemesi", "Kitap", "Müzik Aleti", "Oyun & Konsol", "Beyaz Eşya"]; // SQL ile uyumlu
+  
+  // ŞEHİRLER İÇİN YENİ DROPDOWN LİSTESİ (SQL ile uyumlu)
+  String? _seciliSehir;
+  final List<String> _sehirler = ['Istanbul', 'Ankara', 'Izmir', 'Bursa', 'Antalya', 'Adana', 'Konya', 'Gaziantep', 'Trabzon', 'Eskisehir', 'Kayseri', 'Samsun', 'Mersin', 'Diyarbakir', 'Malatya'];
   
   bool _yukleniyor = false;
   
   Uint8List? _secilenResimBytes;
-  String? _secilenResimAdi;
 
   Future<void> _resimSec() async {
     final ImagePicker picker = ImagePicker();
@@ -32,14 +34,14 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
       final bytes = await image.readAsBytes();
       setState(() {
         _secilenResimBytes = bytes;
-        _secilenResimAdi = image.name;
       });
     }
   }
 
   Future<void> _ilaniKaydet() async {
-    if (_baslikController.text.isEmpty || _fiyatController.text.isEmpty || _secilenResimBytes == null || _seciliKategori == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen tüm alanları doldurun, kategori ve resim seçin!")));
+    // Şehir de boş bırakılmasın diye kontrol ekledik
+    if (_baslikController.text.isEmpty || _fiyatController.text.isEmpty || _secilenResimBytes == null || _seciliKategori == null || _seciliSehir == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen tüm alanları doldurun, kategori, şehir ve resim seçin!")));
       return;
     }
 
@@ -64,22 +66,13 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
       await Supabase.instance.client.from('ilanlar').insert({
         'baslik': _baslikController.text.trim(),
         'kategori': _seciliKategori, 
-        'sehir': _sehirController.text.trim(),
+        'sehir': _seciliSehir, // Dropdown'dan gelen veriyi kaydediyoruz
         'fiyat': _fiyatController.text.trim(),
         'aciklama': _aciklamaController.text.trim(),
         'satici': saticiAdi,
         'email': userEmail,  
         'resim': resimUrl, 
       });
-
-      try {
-        await Supabase.instance.client.from('islem_loglari').insert({
-          'islem_turu': 'Yeni İlan Ekleme',
-          'kullanici_email': userEmail,
-        });
-      } catch (logHatasi) {
-        debugPrint("Log kaydedilemedi: $logHatasi");
-      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İlan Başarıyla Eklendi!"), backgroundColor: Colors.green));
@@ -137,6 +130,8 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
                 ),
                 
                 _buildInputLabel("İlan Başlığı"), _buildTextField("Örn: iPhone 14", controller: _baslikController),
+                
+                // KATEGORİ VE ŞEHİR YAN YANA DROPDOWN
                 Row(
                   children: [
                     Expanded(
@@ -144,33 +139,33 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
                         crossAxisAlignment: CrossAxisAlignment.start, 
                         children: [
                           _buildInputLabel("Kategori"), 
-                          DropdownButtonFormField<String>(
-                            value: _seciliKategori,
-                            hint: const Text("Kategori Seçiniz"),
-                            decoration: InputDecoration(
-                              filled: true, 
-                              fillColor: const Color(0xFFF8FAFC), 
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)
-                            ),
-                            items: _kategoriler.map((String kategori) {
-                              return DropdownMenuItem<String>(
-                                value: kategori,
-                                child: Text(kategori),
-                              );
-                            }).toList(),
-                            onChanged: (String? yeniDeger) {
-                              setState(() {
-                                _seciliKategori = yeniDeger;
-                              });
-                            },
+                          _buildDropdown(
+                            deger: _seciliKategori, 
+                            liste: _kategoriler, 
+                            ipucu: "Kategori Seç", 
+                            degisti: (yeni) => setState(() => _seciliKategori = yeni)
                           )
                         ]
                       )
                     ),
                     const SizedBox(width: 20),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInputLabel("Şehir"), _buildTextField("Şehir Seçiniz", controller: _sehirController)])),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, 
+                        children: [
+                          _buildInputLabel("Şehir"), 
+                          _buildDropdown(
+                            deger: _seciliSehir, 
+                            liste: _sehirler, 
+                            ipucu: "Şehir Seç", 
+                            degisti: (yeni) => setState(() => _seciliSehir = yeni)
+                          )
+                        ]
+                      )
+                    ),
                   ],
                 ),
+                
                 _buildInputLabel("Fiyat (₺)"), _buildTextField("Örn: 5000", controller: _fiyatController, isNumber: true),
                 _buildInputLabel("Açıklama"), _buildTextField("Ürün bilgileri...", controller: _aciklamaController, maxLines: 4),
                 const SizedBox(height: 40),
@@ -192,10 +187,28 @@ class _IlanEkleSayfasiState extends State<IlanEkleSayfasi> {
   }
 
   Widget _buildInputLabel(String text) => Padding(padding: const EdgeInsets.only(bottom: 8.0, top: 20.0), child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)));
+  
   Widget _buildTextField(String hint, {TextEditingController? controller, int maxLines = 1, bool isNumber = false}) {
     return TextField(
       controller: controller, maxLines: maxLines, keyboardType: isNumber ? TextInputType.number : TextInputType.text,
       decoration: InputDecoration(hintText: hint, filled: true, fillColor: const Color(0xFFF8FAFC), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+    );
+  }
+
+  // Yeni oluşturduğumuz genel Dropdown yapıcı metodumuz
+  Widget _buildDropdown({required String? deger, required List<String> liste, required String ipucu, required Function(String?) degisti}) {
+    return DropdownButtonFormField<String>(
+      value: deger,
+      hint: Text(ipucu),
+      decoration: InputDecoration(
+        filled: true, 
+        fillColor: const Color(0xFFF8FAFC), 
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)
+      ),
+      items: liste.map((String eleman) {
+        return DropdownMenuItem<String>(value: eleman, child: Text(eleman));
+      }).toList(),
+      onChanged: degisti,
     );
   }
 }

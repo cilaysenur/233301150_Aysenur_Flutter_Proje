@@ -13,6 +13,7 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
   final _teklifController = TextEditingController();
   bool _islemYapiliyor = false;
   String _aktifKullaniciEmail = "";
+  bool _favoriMi = false; // Favori durumu için değişken
 
   @override
   void initState() {
@@ -20,16 +21,67 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       _aktifKullaniciEmail = user.email!;
+      _favoriKontrol(); // Sayfa açıldığında favori mi diye kontrol et
+    }
+  }
+
+  // Veritabanında favorilerde olup olmadığını sorguluyoruz
+  Future<void> _favoriKontrol() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('favoriler')
+          .select()
+          .eq('user_email', _aktifKullaniciEmail)
+          .eq('ilan_id', widget.ilan['id'])
+          .maybeSingle();
+      
+      if (response != null && mounted) {
+        setState(() => _favoriMi = true);
+      }
+    } catch (e) {
+      debugPrint("Favori kontrol hatası: $e");
+    }
+  }
+
+  // Favoriye Ekle / Çıkar Fonksiyonu
+  Future<void> _favoriyeEkleCikar() async {
+    if (_aktifKullaniciEmail.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favoriye eklemek için giriş yapmalısınız!")));
+      return;
+    }
+
+    try {
+      if (_favoriMi) {
+        // Zaten favoriyse sil
+        await Supabase.instance.client
+            .from('favoriler')
+            .delete()
+            .eq('user_email', _aktifKullaniciEmail)
+            .eq('ilan_id', widget.ilan['id']);
+        if (mounted) {
+          setState(() => _favoriMi = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favorilerden çıkarıldı.", style: TextStyle(color: Colors.white)), backgroundColor: Colors.black87));
+        }
+      } else {
+        // Favori değilse ekle
+        await Supabase.instance.client.from('favoriler').insert({
+          'user_email': _aktifKullaniciEmail,
+          'ilan_id': widget.ilan['id']
+        });
+        if (mounted) {
+          setState(() => _favoriMi = true);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favorilere eklendi! ❤️"), backgroundColor: Colors.red));
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e")));
     }
   }
 
   Future<void> _ilaniSil() async {
     setState(() => _islemYapiliyor = true);
     try {
-      await Supabase.instance.client
-          .from('ilanlar')
-          .delete()
-          .eq('id', widget.ilan['id']);
+      await Supabase.instance.client.from('ilanlar').delete().eq('id', widget.ilan['id']);
 
       try {
         await Supabase.instance.client.from('islem_loglari').insert({
@@ -40,7 +92,7 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("İlan başarıyla sistemden silindi!"), backgroundColor: Colors.black87));
-        Navigator.pop(context, true); // Ana sayfaya dön ve yenilemeyi tetikle
+        Navigator.pop(context, true); 
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Silme Hatası: $e"), backgroundColor: Colors.red));
@@ -74,9 +126,7 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
       if (mounted) {
         Navigator.pop(context); 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Teklifiniz satıcıya başarıyla iletildi! 🎉"), backgroundColor: Colors.green)
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Teklifiniz satıcıya başarıyla iletildi! 🎉"), backgroundColor: Colors.green));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e"), backgroundColor: Colors.red));
@@ -145,7 +195,24 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(title: Text(widget.ilan['baslik'] ?? 'İlan Detayı'), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
+      appBar: AppBar(
+        title: Text(widget.ilan['baslik'] ?? 'İlan Detayı'), 
+        backgroundColor: Colors.white, 
+        foregroundColor: Colors.black, 
+        elevation: 0,
+        actions: [
+          // FAVORİ BUTONU BURADA
+          IconButton(
+            icon: Icon(
+              _favoriMi ? Icons.favorite : Icons.favorite_border, 
+              color: Colors.red,
+              size: 28,
+            ),
+            onPressed: _favoriyeEkleCikar,
+          ),
+          const SizedBox(width: 10),
+        ],
+      ),
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -204,7 +271,6 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
                               child: ElevatedButton.icon(
                                 onPressed: _islemYapiliyor ? null : _ilaniSil,
                                 icon: const Icon(Icons.delete_forever, color: Colors.white),
-                                // Admin silerken butonun adı "Admin: İlanı Kaldır" olur, hoca bayılır!
                                 label: Text(adminMi ? "Admin: İlanı Kaldır" : "İlanımı Sil", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                               ),
