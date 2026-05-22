@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'ilan_duzenle.dart';
 
 class IlanlarimSayfasi extends StatefulWidget {
   const IlanlarimSayfasi({super.key});
@@ -70,10 +69,9 @@ class _IlanlarimSayfasiState extends State<IlanlarimSayfasi> {
       body: _yukleniyor
           ? const Center(child: CircularProgressIndicator())
           : _ilanlarim.isEmpty
-              ? const Center(child: Text("Henüz hiç ilan eklemediniz.", style: TextStyle(fontSize: 16)))
+              ? const Center(child: Text("Henüz hiç ilan eklemediniz.", style: TextStyle(fontSize: 18)))
               : ListView.builder(
-                  // KENARLARDAN 15 PİKSEL BOŞLUK (Mükemmel mobil görünüm, 100 sildik)
-                  padding: const EdgeInsets.all(15),
+                  padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 20),
                   itemCount: _ilanlarim.length,
                   itemBuilder: (context, index) {
                     final ilan = _ilanlarim[index];
@@ -83,90 +81,67 @@ class _IlanlarimSayfasiState extends State<IlanlarimSayfasi> {
     );
   }
 
-  // KUSURSUZ YENİ MOBİL TASARIM (DİKEY KART - SIKIŞMA İHTİMALİ YOK)
   Widget _buildIlanCard(Map<String, dynamic> ilan) {
     return Card(
       margin: const EdgeInsets.only(bottom: 20),
-      elevation: 4,
-      shadowColor: Colors.black.withOpacity(0.1),
+      elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      clipBehavior: Clip.antiAlias, // Resmin köşelerinin kartla birlikte yuvarlanmasını sağlar
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. ÜST KISIM: TAM GENİŞLİKTE BÜYÜK RESİM
-          Image.network(
-            ilan['resim'] ?? 'https://via.placeholder.com/500',
-            width: double.infinity,
-            height: 200,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: double.infinity, 
-              height: 200, 
-              color: Colors.grey.shade200, 
-              child: const Center(child: Icon(Icons.broken_image, size: 50, color: Colors.grey))
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                ilan['resim'] ?? 'https://via.placeholder.com/150',
+                width: 180,
+                height: 120,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(width: 180, height: 120, color: Colors.grey.shade200, child: const Icon(Icons.broken_image)),
+              ),
             ),
-          ),
-          
-          // 2. ALT KISIM: YAZILAR VE BUTONLAR
-          Padding(
-            padding: const EdgeInsets.all(15.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: 30),
+            
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(ilan['kategori'] ?? 'Kategori Yok', style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(ilan['baslik'] ?? 'Başlıksız İlan', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text("₺${ilan['fiyat']}", style: const TextStyle(fontSize: 24, color: Color(0xFF1E3A8A), fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
+            
+            Column(
               children: [
-                Text(ilan['kategori'] ?? 'Kategori Yok', style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 5),
-                Text(ilan['baslik'] ?? 'Başlıksız İlan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
+                SizedBox(
+                  width: 140,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Düzenleme sayfasına geçilecek!")));
+                    },
+                    icon: const Icon(Icons.edit, size: 18, color: Colors.white),
+                    label: const Text("Düzenle", style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), padding: const EdgeInsets.symmetric(vertical: 15)),
+                  ),
+                ),
                 const SizedBox(height: 10),
-                Text("₺${ilan['fiyat']}", style: const TextStyle(fontSize: 22, color: Color(0xFF1E3A8A), fontWeight: FontWeight.w900)),
-                
-                const SizedBox(height: 15),
-                const Divider(height: 1),
-                const SizedBox(height: 15),
-                
-                // Butonlar Alt Alta Değil, Yanyana ve Geniş
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () async {
-                          final sonuc = await Navigator.push(
-                            context, 
-                            MaterialPageRoute(builder: (context) => IlanDuzenleSayfasi(ilan: ilan))
-                          );
-                          if (sonuc == true) {
-                            _ilanlarimiGetir();
-                          }
-                        },
-                        icon: const Icon(Icons.edit, size: 18, color: Colors.white),
-                        label: const Text("Düzenle", style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E3A8A), 
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _ilanSil(ilan['id']),
-                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                        label: const Text("Sil", style: TextStyle(color: Colors.red)),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.red), 
-                          foregroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                        ),
-                      ),
-                    )
-                  ],
+                SizedBox(
+                  width: 140,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _ilanSil(ilan['id']),
+                    icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                    label: const Text("İlanı Sil", style: TextStyle(color: Colors.red)),
+                    style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red), padding: const EdgeInsets.symmetric(vertical: 15)),
+                  ),
                 )
               ],
-            ),
-          )
-        ],
+            )
+          ],
+        ),
       ),
     );
   }

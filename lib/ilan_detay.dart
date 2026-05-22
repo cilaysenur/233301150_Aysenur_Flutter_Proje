@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'ilan_duzenle.dart';
 
 class IlanDetaySayfasi extends StatefulWidget {
   final Map<String, dynamic> ilan;
@@ -13,7 +14,7 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
   final _teklifController = TextEditingController();
   bool _islemYapiliyor = false;
   String _aktifKullaniciEmail = "";
-  bool _favoriMi = false; // Favori durumu için değişken
+  bool _favoriMi = false; 
 
   @override
   void initState() {
@@ -21,11 +22,10 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       _aktifKullaniciEmail = user.email!;
-      _favoriKontrol(); // Sayfa açıldığında favori mi diye kontrol et
+      _favoriKontrol(); 
     }
   }
 
-  // Veritabanında favorilerde olup olmadığını sorguluyoruz
   Future<void> _favoriKontrol() async {
     try {
       final response = await Supabase.instance.client
@@ -43,7 +43,6 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
     }
   }
 
-  // Favoriye Ekle / Çıkar Fonksiyonu
   Future<void> _favoriyeEkleCikar() async {
     if (_aktifKullaniciEmail.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favoriye eklemek için giriş yapmalısınız!")));
@@ -52,7 +51,6 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
 
     try {
       if (_favoriMi) {
-        // Zaten favoriyse sil
         await Supabase.instance.client
             .from('favoriler')
             .delete()
@@ -63,7 +61,6 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Favorilerden çıkarıldı.", style: TextStyle(color: Colors.white)), backgroundColor: Colors.black87));
         }
       } else {
-        // Favori değilse ekle
         await Supabase.instance.client.from('favoriler').insert({
           'user_email': _aktifKullaniciEmail,
           'ilan_id': widget.ilan['id']
@@ -188,6 +185,40 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
     );
   }
 
+  // YENİ: Tam Ekran ve Yakınlaştırılabilir Fotoğraf Gösterme Fonksiyonu
+  void _tamEkranResimGoster() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black, // Arka plan tamamen siyah
+          appBar: AppBar(
+            backgroundColor: Colors.transparent, // AppBar şeffaf
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white), // Geri tuşu beyaz
+          ),
+          extendBodyBehindAppBar: true, 
+          body: Center(
+            child: InteractiveViewer(
+              panEnabled: true, // Sağa sola kaydırma aktif
+              minScale: 1.0,    // Orijinal boyut
+              maxScale: 5.0,    // 5 kata kadar zoom yapılabilir
+              child: Hero(
+                tag: 'ilan_resim_${widget.ilan['id']}', // Animasyon etiketi
+                child: Image.network(
+                  widget.ilan['resim'] ?? 'https://via.placeholder.com/500',
+                  fit: BoxFit.contain, // Ekrana sığdır ama oranları bozma
+                  width: double.infinity,
+                  height: double.infinity,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool ilanSahibiMi = _aktifKullaniciEmail == widget.ilan['email'];
@@ -201,26 +232,33 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
         foregroundColor: Colors.black, 
         elevation: 0,
         actions: [
-          // FAVORİ BUTONU BURADA
-          IconButton(
-            icon: Icon(
-              _favoriMi ? Icons.favorite : Icons.favorite_border, 
-              color: Colors.red,
-              size: 28,
+          if (!adminMi)
+            IconButton(
+              icon: Icon(
+                _favoriMi ? Icons.favorite : Icons.favorite_border, 
+                color: Colors.red,
+                size: 28,
+              ),
+              onPressed: _favoriyeEkleCikar,
             ),
-            onPressed: _favoriyeEkleCikar,
-          ),
           const SizedBox(width: 10),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            Image.network(
-              widget.ilan['resim'] ?? 'https://via.placeholder.com/500',
-              width: double.infinity,
-              height: 350,
-              fit: BoxFit.cover,
+            // YENİ: Tıklanabilir ve Animasyonlu Resim Alanı
+            GestureDetector(
+              onTap: _tamEkranResimGoster, // Tıklayınca tam ekran fonksiyonunu çağır
+              child: Hero(
+                tag: 'ilan_resim_${widget.ilan['id']}', // Animasyon için etiket (tam ekrandaki etiket ile aynı olmalı)
+                child: Image.network(
+                  widget.ilan['resim'] ?? 'https://via.placeholder.com/500',
+                  width: double.infinity,
+                  height: 350,
+                  fit: BoxFit.cover,
+                ),
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(30.0),
@@ -247,10 +285,10 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("₺${widget.ilan['fiyat']}", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Color(0xFF1E3A8A))),
+                          Text("₺${widget.ilan['fiyat']}", style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: const Color(0xFF1E3A8A))),
                           const SizedBox(height: 20),
                           
-                          if (!ilanSahibiMi)
+                          if (!ilanSahibiMi && !adminMi)
                             SizedBox(
                               width: double.infinity,
                               height: 50,
@@ -262,7 +300,30 @@ class _IlanDetaySayfasiState extends State<IlanDetaySayfasi> {
                               ),
                             ),
                           
-                          if (!ilanSahibiMi) const SizedBox(height: 15),
+                          if (!ilanSahibiMi && !adminMi) const SizedBox(height: 15),
+
+                          if (adminMi)
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context, 
+                                    MaterialPageRoute(builder: (context) => IlanDuzenleSayfasi(ilan: widget.ilan))
+                                  ).then((guncellendi) {
+                                    if (guncellendi == true) {
+                                      Navigator.pop(context, true);
+                                    }
+                                  });
+                                },
+                                icon: const Icon(Icons.edit, color: Colors.white),
+                                label: const Text("Admin: İlanı Düzenle", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade700, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                              ),
+                            ),
+                          
+                          if (adminMi) const SizedBox(height: 15),
 
                           if (ilanSahibiMi || adminMi)
                             SizedBox(

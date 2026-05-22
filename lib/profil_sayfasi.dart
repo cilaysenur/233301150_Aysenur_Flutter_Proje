@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'ilan_duzenle.dart'; // DÜZENLEME SAYFANIZI İÇERİ AKTARDIK
 
 class ProfilSayfasi extends StatefulWidget {
   const ProfilSayfasi({super.key});
@@ -12,11 +13,18 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
   bool _yukleniyor = true;
   String _kullaniciMail = "";
   
+  // --- ADMİN KONTROLÜ ---
+  bool _isAdmin = false;
+  final String adminMail = "admin2005@gmail.com"; 
+
+  // Normal Kullanıcı Değişkenleri
   String _adSoyad = "Ad Soyad Belirtilmemiş";
   String _dogumTarihi = "Doğum Tarihi Belirtilmemiş";
-  
   List<Map<String, dynamic>> _gelenTeklifler = [];
   List<Map<String, dynamic>> _verdigimTeklifler = [];
+
+  // Admin Değişkenleri
+  List<Map<String, dynamic>> _tumIlanlarAdmin = [];
 
   final _adController = TextEditingController();
   final _tarihController = TextEditingController();
@@ -30,14 +38,56 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
   Future<void> _tumVerileriYenile() async {
     setState(() => _yukleniyor = true);
     final user = Supabase.instance.client.auth.currentUser;
+    
     if (user != null) {
       _kullaniciMail = user.email!;
-      await _profilBilgileriniGetir();
-      await _gelenTeklifleriGetir();
-      await _verdigimTeklifleriGetir();
+      _isAdmin = _kullaniciMail == adminMail;
+
+      if (_isAdmin) {
+        await _adminTumIlanlariGetir();
+      } else {
+        await _profilBilgileriniGetir();
+        await _gelenTeklifleriGetir();
+        await _verdigimTeklifleriGetir();
+      }
     }
     setState(() => _yukleniyor = false);
   }
+
+  // ================= ADMİN METOTLARI =================
+
+  Future<void> _adminTumIlanlariGetir() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('ilanlar')
+          .select()
+          .order('created_at', ascending: false);
+
+      setState(() {
+        _tumIlanlarAdmin = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      debugPrint("Admin ilan çekme hatası: $e");
+    }
+  }
+
+  Future<void> _adminIlanSil(int id) async {
+    try {
+      await Supabase.instance.client.from('ilanlar').delete().eq('id', id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("İlan sistemden kalıcı olarak silindi."),
+          backgroundColor: Colors.red,
+        ));
+      }
+      _tumVerileriYenile();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Silme hatası: $e")));
+    }
+  }
+
+  // ================= NORMAL KULLANICI METOTLARI =================
 
   Future<void> _profilBilgileriniGetir() async {
     try {
@@ -98,35 +148,31 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
 
   Future<void> _teklifDurumGuncelle(int id, String yeniDurum) async {
     try {
-      await Supabase.instance.client
-          .from('teklifler')
-          .update({'durum': yeniDurum})
-          .eq('id', id);
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("Teklif $yeniDurum!"),
-        backgroundColor: yeniDurum == 'Kabul Edildi' ? Colors.green : Colors.red,
-      ));
+      await Supabase.instance.client.from('teklifler').update({'durum': yeniDurum}).eq('id', id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Teklif $yeniDurum!"),
+          backgroundColor: yeniDurum == 'Kabul Edildi' ? Colors.green : Colors.red,
+        ));
+      }
       _tumVerileriYenile(); 
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hata: $e")));
     }
   }
 
   Future<void> _teklifSil(int id) async {
     try {
-      await Supabase.instance.client
-          .from('teklifler')
-          .delete()
-          .eq('id', id);
-
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text("Teklif başarıyla kaldırıldı."),
-        backgroundColor: Colors.black87,
-      ));
+      await Supabase.instance.client.from('teklifler').delete().eq('id', id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Teklif başarıyla kaldırıldı."),
+          backgroundColor: Colors.black87,
+        ));
+      }
       _tumVerileriYenile();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Silme hatası: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Silme hatası: $e")));
     }
   }
 
@@ -177,55 +223,127 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(title: const Text("Profilim & İşlemlerim"), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
+      appBar: AppBar(
+        title: Text(_isAdmin ? "Tüm İlan Yönetimi" : "Profilim & İşlemlerim"), 
+        backgroundColor: _isAdmin ? Colors.red.shade50 : Colors.white, 
+        foregroundColor: _isAdmin ? Colors.red.shade900 : Colors.black, 
+        elevation: 0
+      ),
       body: _yukleniyor
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 30),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(30),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15)]),
-                    child: Row(
-                      children: [
-                        CircleAvatar(radius: 45, backgroundColor: Colors.blue.shade50, child: const Icon(Icons.person, size: 45, color: Color(0xFF1E3A8A))),
-                        const SizedBox(width: 30),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_adSoyad, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 5),
-                              Text("📧 $_kullaniciMail", style: const TextStyle(color: Colors.black54)),
-                              const SizedBox(height: 5),
-                              Text("🎂 $_dogumTarihi", style: const TextStyle(color: Colors.black54)),
-                            ],
-                          ),
+          : _isAdmin 
+              ? _buildAdminPaneli() 
+              : _buildNormalKullaniciPaneli(),
+    );
+  }
+
+  // ================= ARAYÜZ PARÇALARI =================
+
+  Widget _buildAdminPaneli() {
+    if (_tumIlanlarAdmin.isEmpty) {
+      return const Center(child: Text("Sistemde aktif ilan bulunmuyor.", style: TextStyle(fontSize: 18)));
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Sistemdeki Tüm İlanlar", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red)),
+          const SizedBox(height: 15),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _tumIlanlarAdmin.length,
+            itemBuilder: (context, index) {
+              final ilan = _tumIlanlarAdmin[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.red.shade100)),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    children: [
+                      ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.network(ilan['resim'] ?? 'https://via.placeholder.com/100', width: 100, height: 70, fit: BoxFit.cover)),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ilan['baslik'] ?? 'İsimsiz İlan', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 5),
+                            Text("Sahibi: ${ilan['email']}", style: const TextStyle(color: Colors.black54)),
+                          ],
                         ),
-                        ElevatedButton.icon(
-                          onPressed: _profilDuzenleMenusu,
-                          icon: const Icon(Icons.edit, size: 16, color: Colors.white),
-                          label: const Text("Düzenle", style: TextStyle(color: Colors.white)),
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        )
-                      ],
-                    ),
+                      ),
+                      Text("₺${ilan['fiyat']}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87)),
+                      const SizedBox(width: 30),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue, size: 28),
+                        onPressed: () {
+                           // KENDİ YAZDIĞIN DÜZENLEME SAYFASINA GİDER
+                           Navigator.push(context, MaterialPageRoute(builder: (context) => IlanDuzenleSayfasi(ilan: ilan)))
+                               .then((_) => _tumVerileriYenile());
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_forever, color: Colors.red, size: 28),
+                        onPressed: () => _adminIlanSil(ilan['id']),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 40),
-                  
-                  const Text("Gelen Teklifler (Satıcı Rolü)", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
-                  const SizedBox(height: 15),
-                  _buildGelenTekliflerListesi(),
-                  
-                  const SizedBox(height: 40),
-                  const Text("Verdiğim Teklifler (Alıcı Rolü)", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 15),
-                  _buildVerdigimTekliflerListesi(),
-                ],
-              ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNormalKullaniciPaneli() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 100, vertical: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 15)]),
+            child: Row(
+              children: [
+                CircleAvatar(radius: 45, backgroundColor: Colors.blue.shade50, child: const Icon(Icons.person, size: 45, color: Color(0xFF1E3A8A))),
+                const SizedBox(width: 30),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_adSoyad, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text("📧 $_kullaniciMail", style: const TextStyle(color: Colors.black54)),
+                      const SizedBox(height: 5),
+                      Text("🎂 $_dogumTarihi", style: const TextStyle(color: Colors.black54)),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _profilDuzenleMenusu,
+                  icon: const Icon(Icons.edit, size: 16, color: Colors.white),
+                  label: const Text("Düzenle", style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A8A), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                )
+              ],
             ),
+          ),
+          const SizedBox(height: 40),
+          const Text("Gelen Teklifler (Satıcı Rolü)", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A))),
+          const SizedBox(height: 15),
+          _buildGelenTekliflerListesi(),
+          const SizedBox(height: 40),
+          const Text("Verdiğim Teklifler (Alıcı Rolü)", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
+          const SizedBox(height: 15),
+          _buildVerdigimTekliflerListesi(),
+        ],
+      ),
     );
   }
 
@@ -261,9 +379,8 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
                     ],
                   ),
                 ),
-                Text("₺${teklif['teklif_fiyati']}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1E3A8A))),
+                Text("₺${teklif['teklif_fiyati']}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: const Color(0xFF1E3A8A))),
                 const SizedBox(width: 30),
-                
                 Row(
                   children: [
                     if (teklif['durum'] == 'Bekliyor') ...[
@@ -318,7 +435,6 @@ class _ProfilSayfasiState extends State<ProfilSayfasi> {
                 ),
                 Text("₺${teklif['teklif_fiyati']}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87)),
                 const SizedBox(width: 20),
-                
                 IconButton(
                   icon: const Icon(Icons.delete_forever, color: Colors.redAccent, size: 26),
                   onPressed: () => _teklifSil(teklif['id']),

@@ -35,7 +35,7 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
 
   Future<void> _bildirimKontrol() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return;
+    if (user == null || user.email == 'admin2005@gmail.com') return; // Adminin bildirime ihtiyacı yok
 
     try {
       final response = await Supabase.instance.client
@@ -127,7 +127,6 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
     }
   }
 
-  // YENİ: Teklif Gönderme İşlemi (Ayrı Fonksiyon)
   Future<void> _teklifGonder(Map<String, dynamic> ilan, String fiyat) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
@@ -145,7 +144,6 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
     }
   }
 
-  // YENİ: Zarif Pop-up Menu (Tooltip Benzeri)
   void _teklifMenusuGoster(BuildContext context, Map<String, dynamic> ilan, GlobalKey key) {
     final user = Supabase.instance.client.auth.currentUser;
 
@@ -155,6 +153,10 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
     }
     if (user.email == ilan['email']) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kendi ilanınıza teklif veremezsiniz!"), backgroundColor: Colors.orange));
+      return;
+    }
+    if (user.email == 'admin2005@gmail.com') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Admin hesabı teklif veremez!"), backgroundColor: Colors.red));
       return;
     }
 
@@ -238,6 +240,9 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final bool isAdmin = user?.email == 'admin2005@gmail.com'; // ADMIN KONTROLÜ
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -248,20 +253,23 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
             const Text("İkinci El Pazarı", style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold)),
             const SizedBox(width: 40),
             _navbarItem("Ana Sayfa", active: true, onTap: () {}),
-            _navbarItem("İlanlarım", onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanlarimSayfasi()));
-            }),
+            if (!isAdmin) // SADECE NORMAL KULLANICI GÖRSÜN
+              _navbarItem("İlanlarım", onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanlarimSayfasi()));
+              }),
           ],
         ),
         actions: [
-          _navbarAction(Icons.add_circle_outline, "İlan Ver", () async {
-            final sonuc = await Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanEkleSayfasi()));
-            if (sonuc == true) _verileriGetir(); 
-          }),
+          if (!isAdmin) // SADECE NORMAL KULLANICI GÖRSÜN
+            _navbarAction(Icons.add_circle_outline, "İlan Ver", () async {
+              final sonuc = await Navigator.push(context, MaterialPageRoute(builder: (context) => const IlanEkleSayfasi()));
+              if (sonuc == true) _verileriGetir(); 
+            }),
           
-          _navbarAction(Icons.favorite_border, "Favoriler", () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const FavorilerSayfasi())).then((_) => _verileriGetir());
-          }),
+          if (!isAdmin) // SADECE NORMAL KULLANICI GÖRSÜN
+            _navbarAction(Icons.favorite_border, "Favoriler", () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const FavorilerSayfasi())).then((_) => _verileriGetir());
+            }),
           
           InkWell(
             onTap: () async {
@@ -274,13 +282,13 @@ class _IlanlarSayfasiState extends State<IlanlarSayfasi> {
               child: Row(
                 children: [
                   Badge(
-                    isLabelVisible: _yeniBildirimVar, 
+                    isLabelVisible: isAdmin ? false : _yeniBildirimVar, 
                     backgroundColor: Colors.red,
                     smallSize: 10,
-                    child: const Icon(Icons.person_outline, size: 20, color: Colors.black87),
+                    child: Icon(isAdmin ? Icons.admin_panel_settings : Icons.person_outline, size: 20, color: isAdmin ? Colors.red.shade700 : Colors.black87),
                   ),
                   const SizedBox(width: 5),
-                  const Text("Profilim", style: TextStyle(color: Colors.black87, fontSize: 13)),
+                  Text(isAdmin ? "Yönetici Paneli" : "Profilim", style: TextStyle(color: isAdmin ? Colors.red.shade700 : Colors.black87, fontSize: 13, fontWeight: isAdmin ? FontWeight.bold : FontWeight.normal)),
                 ],
               ),
             ),
